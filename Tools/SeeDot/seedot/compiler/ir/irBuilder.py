@@ -535,6 +535,46 @@ class IRBuilder(ASTVisitor):
 
         return (prog_out, expr_out)
 
+    def visitReverse(self, node: AST.Reverse):t
+        (prog_in, expr_in) = self.visit(expr)
+
+        prog_out = IR.Prog([])
+        prog_out = IRUtil.concatPrograms(prog_out, prog_in)
+
+        expr_out = self.getTempVar()
+
+        # Scale of the output is the scale of the first argument
+        scale_out = self.varScales[exprs[0].idf]
+        intv_out = self.varIntervals[exprs[0].idf]
+
+        args = dict()
+        args[expr_in] = 'A'
+        args[IR.Int(node.axis)] = 'axis'
+
+        ch = 'I'
+        for i in node.type.shape:
+            args[IR.Int(i)] = ch
+            ch = chr(ord(ch) + 1)
+        
+        args[expr_out] = expr_out.idf
+
+        comment = IR.Comment(
+            node.name + '(' + ', '.expr.idf + ')')
+
+        funcCall = IR.FuncCall(node.name + len(node.type.shape), args)
+        prog_funcCall = IR.Prog([comment, funcCall])
+
+        self.counter_inst += 1
+        self.updateLiveRange([expr_in, expr_out])
+
+        prog_out = IRUtil.concatPrograms(prog_out, prog_funcCall)
+
+        self.varDeclarations[expr_out.idf] = node.type
+        self.varScales[expr_out.idf] = scale_out
+        self.varIntervals[expr_out.idf] = intv_out
+
+        return (prog_out, expr_out)    
+
     # out = +- in
     def visitUop(self, node: AST.Uop):
 

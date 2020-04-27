@@ -58,6 +58,8 @@ void Sigmoid(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_lim
 void AdjustScaleShr(MYINT *A, MYINT I, MYINT J, MYINT scale);
 void AdjustScaleShl(MYINT *A, MYINT I, MYINT J, MYINT scale);
 
+void Reverse2(MYINT *A, MYINT axis, MYINT I, MYINT J, MYINT *B);
+
 //Templated Operations: For cases when Variable BitWidth is enabled
 
 template<class TypeA>

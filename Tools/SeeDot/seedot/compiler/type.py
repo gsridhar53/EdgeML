@@ -391,3 +391,19 @@ class InferType(astVisitor.ASTVisitor):
 
         node.type = fType
         return node.type
+
+    # Reverse a tensor along given axis
+    def visitReverse(self, node: ast.Reverse):
+        node.expr.gamma = dict(node.gamma)
+        exprType = self.visit(node.expr)
+
+        node.expr.gamma = dict(node.gamma)
+        axisType = self.visit(node.axis)
+
+        assert isTensor(exprType) and exprType.dim >= 1
+
+        # Reverse is valid if the array dimension remains same
+        assert exprType.shape == node.shape
+        node.type = Tensor(node.shape)
+
+        return node.type     
