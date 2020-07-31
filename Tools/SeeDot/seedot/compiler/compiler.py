@@ -122,7 +122,7 @@ class Compiler:
 
         compiler = irBuilder.IRBuilder(outputLog, self.intermediateScales, self.substitutions, self.scaleForX, self.variableToBitwidthMap, self.sparseMatrixSizes, self.demotedVarsList, self.demotedVarsOffsets)
         res = compiler.visit(ast)
-
+        
         print(compiler.varScales)
         self.varScales = dict(compiler.varScales)
 

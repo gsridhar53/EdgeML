@@ -48,7 +48,7 @@ class ParamsBuilder(ASTVisitor):
     def visitReshape(self, node: AST.Reshape):
         self.visit(node.expr)
 
-    def visitMaxpool(self, node: AST.Maxpool):
+    def visitPool(self, node: AST.Pool):
         self.visit(node.expr)
 
     def visitReverse(self, node: AST.Reverse):

@@ -4,7 +4,9 @@
 #pragma once
 
 #include "datatypes.h"
+#include <vector>
 
+using namespace std;
 /**
  * Notation used:
  * 		By default, 'matrix' is to be interpreted as a matrix in fixed point representation
@@ -35,6 +37,9 @@ void MatAddNN(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT 
 void MatAddCN(const MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC);
 void MatAddNC(MYINT *A, const MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC);
 void MatAddCC(const MYINT *A, const MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC);
+
+void MatAddNN(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT K, MYINT L, MYINT shrA, MYINT shrB, MYINT shrC);
+
 
 /**
  * Dimensions: 	I, J, shrA, shrB, shrC are integers
@@ -159,6 +164,8 @@ void ArgMax(MYINT *A, MYINT I, MYINT J, MYINT *index);
  * Computes transpose(A) and stores the result in B
  */
 void Transpose(MYINT *A, MYINT *B, MYINT I, MYINT J);
+void Transpose(const MYINT *A, MYINT *B, MYINT I, MYINT J);
+
 
 /**
  * Dimensions: 	I, J, shrA, shrB are integers
@@ -238,12 +245,26 @@ void Relu6(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT six, MY
  * Computes the maxpool of A and stores the result in B
  * Raw parameters (directly passed from input code to function):
  * 		FH, FW : Size of filter amongst which max is taken
- * 		HPADL, HPADR : Thickness of padding on top, bottom of the image
- * 		WPADL, WPADR : Thickness of padding on left, right of the image
+ * 		zPadHLeft, zPadHRight : Thickness of padding on top, bottom of the image
+ * 		zPadWLeft, zPadWRight : Thickness of padding on left, right of the image
  * 		strideH, strideW : Convolution horizontal, vertical stride
  */
-void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR);
+void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight);
 
+
+/**
+ * Dimensions:	A, B are matrices, dim(A) = dim(B) = [N][H][W][C]; N, H, W, C are integers
+ * 				FH, FW, strideH, strideW, HPADL, HPADR, WPADL, WPADR
+ * 
+ * Avgpool
+ * Computes the average pool of A and stores the result in B
+ * Raw parameters (directly passed from input code to function):
+ * 		FH, FW : Size of filter amongst which max is taken
+ * 		zPadHLeft, zPadHRight : Thickness of padding on top, bottom of the image
+ * 		zPadWLeft, zPadWRight : Thickness of padding on left, right of the image
+ * 		strideH, strideW : Convolution horizontal, vertical stride
+ */
+void Avgpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight);
 
 /**
  * Dimensions:	A is a tensor. dim(A) = [N][H][W][C]
@@ -350,6 +371,36 @@ void MatAddNN(TypeA* A, TypeB* B, TypeC* C, MYINT I, MYINT J, MYINT shrA, MYINT 
 	}
 	return;
 }
+
+
+// C = A + B
+template<class TypeA, class TypeB, class TypeTemp, class TypeC>
+void MatAddNN(TypeA *A, TypeB *B, TypeC *C, MYINT I, MYINT J, MYINT K, MYINT L, MYINT shrA, MYINT shrB, MYINT shrC, MYINT demote)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{
+			for (MYITE k = 0; k < K; k++)
+			{
+				for (MYITE l = 0; l < L; l++)
+				{
+					TypeTemp a = A[i * J * K * L + j * K * L + k * L + l];
+					TypeTemp b = B[i * J * K * L + j * K * L + k * L + l];
+
+					a = a / shrA;
+					b = b / shrB;
+
+					TypeTemp c = a / shrC + b / shrC;
+
+					C[i * J + j] = Saturate<TypeC>(c / demote);
+				}	
+			}
+		}
+	}
+	return;
+}
+
 template<class TypeA, class TypeB, class TypeTemp, class TypeC>
 void MatAddCN(const TypeA* A, TypeB* B, TypeC* C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC, MYINT demote) {
 	for (MYITE i = 0; i < I; i++) {
@@ -1211,30 +1262,129 @@ void Relu2D(TypeA* A, MYINT H, MYINT W) {
 	return;
 }
 
+
+// B = maxpool(A)
+// A[N][inH][inW][C], B[N][outH][outW][C]
 template<class TypeA, class TypeB>
-void Maxpool(TypeA* A, TypeB* B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR, MYINT demote) {
-	MYITE HO = H / strideH;
-	MYITE WO = W / strideW;
+void Maxpool(TypeA *A, TypeB *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight, MYINT demote)
+{
+	for (MYITE n = 0; n < N; n++)
+	{	
+		for (MYITE c = 0; c < C; c++)
+		{	
+			MYITE leftTopCornerH = 0 - zPadHLeft;
+			MYITE extremeRightBottomCornerH = H - 1 + zPadHRight;
+			MYITE ctH = 0; 
 
-	for (MYITE n = 0; n < N; n++) {
-		for (MYITE ho = 0; ho < HO; ho++) {
-			for (MYITE wo = 0; wo < WO; wo++) {
-				for (MYITE c = 0; c < C; c++) {
+			while((leftTopCornerH + FH - 1) <= extremeRightBottomCornerH){
+				
+				MYITE leftTopCornerW = 0 - zPadWLeft;
+				MYITE extremeRightBottomCornerW = W - 1 + zPadWRight;
+				MYITE ctW = 0;
 
-					TypeA max = A[n * H * W * C + (strideH * ho) * W * C + (strideW * wo) * C + c];
-					for (MYITE hs = 0; hs < FH; hs++) {
-						for (MYITE ws = 0; ws < FW; ws++) {
-							TypeA a = A[n * H * W * C + ((strideH * ho) + hs) * W * C + ((strideW * wo) + ws) * C + c];
-							if (a > max)
-								max = a;
+				while((leftTopCornerW + FW - 1) <= extremeRightBottomCornerW)
+				{	
+
+					TypeA maxi = 0;
+					if ((((leftTopCornerH < 0) || (leftTopCornerH >= H)) || ((leftTopCornerW < 0) || (leftTopCornerW >= W)))){
+						maxi = 0;
+					}
+					else{
+						// maxi = inArr[n][leftTopCornerH][leftTopCornerW][c];
+						maxi =  A[n * H * W * C + leftTopCornerH * W * C + leftTopCornerW * C + c];
+					};
+
+					for (MYITE fh = 0; fh < FH; fh++)
+					{
+						for (MYITE fw = 0; fw < FW; fw++)
+						{	
+							MYITE curPosH = leftTopCornerH + fh;
+							MYITE curPosW = leftTopCornerW + fw;
+							MYITE temp = 0;
+							if ((((curPosH < 0) || (curPosH >= H)) || ((curPosW < 0) || (curPosW >= W)))){
+								temp = 0;
+							}
+							else{
+								// temp = inArr[n][curPosH][curPosW][c];
+								temp = A[n * H * W * C + curPosH * W * C + curPosW * C + c];
+							};
+							maxi = ((maxi < temp) ? temp : maxi);
+
 						}
 					}
 
-					B[n * HO * WO * C + ho * WO * C + wo * C + c] = (TypeB)(max / demote);
+					B[n * outH * outW * C + ctH * outW * C + ctW * C + c] = (TypeB) (maxi/demote);
+					// outArr[n][ctH][ctW][c] = maxi;
+					leftTopCornerW = leftTopCornerW + strideW;
+					ctW = ctW + 1;
 				}
+
+				leftTopCornerH = leftTopCornerH + strideH;
+				ctH = ctH + 1;
 			}
-		}
+		}	
 	}
+	
+	return;
+}
+
+// B = avgpool(A)
+// A[N][inH][inW][C], B[N][outH][outW][C]
+template<class TypeA, class TypeB>
+void Avgpool(TypeA *A, TypeB *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight, MYINT demote)
+{	
+	MYINT FSIZE = FH*FW;
+
+	for (MYITE n = 0; n < N; n++)
+	{	
+		for (MYITE c = 0; c < C; c++)
+		{	
+			MYITE leftTopCornerH = 0 - zPadHLeft;
+			MYITE extremeRightBottomCornerH = H - 1 + zPadHRight;
+			MYITE ctH = 0; 
+
+			while((leftTopCornerH + FH - 1) <= extremeRightBottomCornerH){
+				
+				MYITE leftTopCornerW = 0 - zPadWLeft;
+				MYITE extremeRightBottomCornerW = W - 1 + zPadWRight;
+				MYITE ctW = 0;
+
+				while((leftTopCornerW + FW - 1) <= extremeRightBottomCornerW)
+				{	
+
+					TypeA sum = 0;
+
+					for (MYITE fh = 0; fh < FH; fh++)
+					{
+						for (MYITE fw = 0; fw < FW; fw++)
+						{	
+							MYITE curPosH = leftTopCornerH + fh;
+							MYITE curPosW = leftTopCornerW + fw;
+							MYITE temp = 0;
+							if ((((curPosH < 0) || (curPosH >= H)) || ((curPosW < 0) || (curPosW >= W)))){
+								temp = 0;
+							}
+							else{
+								// temp = inArr[n][curPosH][curPosW][c];
+								temp = A[n * H * W * C + curPosH * W * C + curPosW * C + c];
+							};
+							sum = sum + temp;
+
+						}
+					}
+
+					B[n * outH * outW * C + ctH * outW * C + ctW * C + c] = (TypeB) ((sum/FSIZE)/demote);
+					// outArr[n][ctH][ctW][c] = maxi;
+					leftTopCornerW = leftTopCornerW + strideW;
+					ctW = ctW + 1;
+				}
+
+				leftTopCornerH = leftTopCornerH + strideH;
+				ctH = ctH + 1;
+			}
+		}	
+	}
+	
 	return;
 }
 

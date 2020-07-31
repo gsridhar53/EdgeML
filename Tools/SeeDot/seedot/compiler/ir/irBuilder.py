@@ -386,7 +386,7 @@ class IRBuilder(ASTVisitor):
         loopIters = []
         
         if node.order == None:
-            node.order = [i+1 for i in range(type_in.dim)]      
+            node.order = [i+1 for i in range(type_in.dim)]         
 
         for order in node.order:
             order = order - 1
@@ -421,8 +421,8 @@ class IRBuilder(ASTVisitor):
 
         return (prog_out, expr_out)
 
-    # out = maxpool(in, stride)
-    def visitMaxpool(self, node: AST.Maxpool):
+    # out = pool(in, stride) 
+    def visitPool(self, node: AST.Pool):
 
         (prog_in, expr_in) = self.visit(node.expr)
 
@@ -436,7 +436,7 @@ class IRBuilder(ASTVisitor):
 
         # Compute scaling factor
         #TODO
-        #Maxpool does NOT get profiled. So, it is not possible for the output variable to have a different scale
+        #pool does NOT get profiled. So, it is not possible for the output variable to have a different scale
         bw_in, scale_in = self.getBitwidthAndScale(expr_in.idf)
         bw_out, scale_out = bw_in, scale_in
         demote = 2 ** (scale_out - scale_in)
@@ -455,16 +455,22 @@ class IRBuilder(ASTVisitor):
             self.demotedVarsOffsets[expr_out.idf] = 0
             self.varsForBitwidth[expr_out.idf] = config.wordLength // 2
 
-        comment = IR.Comment(
-            "maxpool(" + expr_in.idf + ", " + str(kernelSize) + ',' + str(padding) + ',' + str(stride) + ")")
+        poolFunctionName = "Maxpool"    
+        if node.poolType == "avgpool":
+            poolFunctionName = "Avgpool"
 
-        funcCall = IR.FuncCall("Maxpool", {
+        comment = IR.Comment(
+             poolFunctionName + "(" + expr_in.idf + ", " + str(kernelSize) + ',' + str(padding) + ',' + str(stride) + ")")
+
+        funcCall = IR.FuncCall(poolFunctionName, {
             expr_in: "A",
             expr_out: "B",
             IR.Int(N): "N",
             IR.Int(H): "H",
             IR.Int(W): "W",
             IR.Int(C): "C",
+            IR.Int(node.type.shape[1]): "outH",
+            IR.Int(node.type.shape[2]): "outW",
             IR.Int(kernelSize[0]): "FH",
             IR.Int(kernelSize[1]): "FW",
             IR.Int(stride[0]): "stideH",
@@ -473,13 +479,15 @@ class IRBuilder(ASTVisitor):
             IR.Int(padding[1]): "HPADR",
             IR.Int(padding[2]): "WPADL",
             IR.Int(padding[3]): "WPADR"
-        }) if not self.vbwEnabled else IR.FuncCall("Maxpool<int%d_t, int%d_t>"%(bw_in, bw_out), {
+        }) if not self.vbwEnabled else IR.FuncCall(poolFunctionName + "<int%d_t, int%d_t>"%(bw_in, bw_out), {
             expr_in: "A",
             expr_out: "B",
             IR.Int(N): "N",
             IR.Int(H): "H",
             IR.Int(W): "W",
             IR.Int(C): "C",
+            IR.Int(node.type.shape[1]): "outH",
+            IR.Int(node.type.shape[2]): "outW",            
             IR.Int(kernelSize[0]): "FH",
             IR.Int(kernelSize[1]): "FW",
             IR.Int(stride[0]): "stideH",
@@ -494,9 +502,9 @@ class IRBuilder(ASTVisitor):
         self.counter_inst += 1
         self.updateLiveRange([expr_in, expr_out])
 
-        prog_maxpool = IR.Prog([comment, funcCall])
+        prog_pool = IR.Prog([comment, funcCall])
 
-        prog_out = IRUtil.concatPrograms(prog_in, prog_maxpool)
+        prog_out = IRUtil.concatPrograms(prog_in, prog_pool)
 
         # Update declarations
         self.varDeclarations[expr_out.idf] = type_out
@@ -1888,12 +1896,10 @@ class IRBuilder(ASTVisitor):
         # e : Tensor(), or Tensor(..)
         else:
 
-            assert type_out.dim == 2 or (type_out.dim == 4 and config.vbwEnabled), "Addition/subtraction of tensors is currently only supported for 2D tensors. Addition for 4D tensors is supported when VBW is enabled"
-
             type_A = node.expr1.type
             type_B = node.expr2.type
 
-            assert (not type_out.dim == 4) or (type_A.dim == type_B.dim and expr_in_A.idf not in self.globalVars and expr_in_B.idf not in self.globalVars and node.op == SeeDotParser.ADD), "For 4D operation, no broadcasting supported, inputs should not be model parameters, and operation cannot be subtraction"
+            assert type_out.dim == 2 or type_out.dim == 4, "Addition/subtraction of tensors is currently only supported for 2D/4D tensors"
 
             c = ''
             if op_fn == operator.add:
@@ -2008,8 +2014,8 @@ class IRBuilder(ASTVisitor):
             if type_out.dim == 2:
                 profile = IR.FuncCall("Profile2", {
                                 expr_out: "Var",
-                                IR.Int(I): "I",
-                                IR.Int(J): "J",
+                                IR.Int(type_out.shape[0]): "I",
+                                IR.Int(type_out.shape[1]): "J",
                                 IR.String(expr_out): "VarName"
                                 })
             elif type_out.dim == 4:

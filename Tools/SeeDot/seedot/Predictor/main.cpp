@@ -345,6 +345,9 @@ int main(int argc, char *argv[])
 	}
 
 
+	string computedOutputFile = outputDir + "/output-" + datasetTypeStr + ".txt";
+	ofstream computedOutput(computedOutputFile);
+
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
 	vector<int> correctV(switches, 0), totalV(switches, 0);
@@ -410,8 +413,10 @@ int main(int argc, char *argv[])
 				float res;
 				if (version == Float) {
 					res = float_res[j];
+					computedOutput << res << endl;
 				} else {
 					res = ((float) fixed_res[j]) / ldexp(1.0 , -scaleForY);
+					computedOutput << res << endl;
 				}
 
 				float error = 100.0 * fabs(res - labelsFloat[i][j]) / (epsilon + fabs(labelsFloat[i][j]));

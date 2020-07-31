@@ -29,12 +29,13 @@ higherOffsetBias = True
 
 fixedPointVbwIteration = False
 
-class MaximisingMetric:
+class Metric:
     accuracy = "acc"
     disagreements = "disagree"
     reducedDisagreements = "red_disagree"
+    regressionLoss = "reg_loss"
     default = [accuracy]
-    all = [accuracy, disagreements, reducedDisagreements]
+    all = [accuracy, disagreements, reducedDisagreements, regressionLoss]
 
 class Algo:
     bonsai = "bonsai"
@@ -43,9 +44,11 @@ class Algo:
     rnn = "rnn"
     rnnpool = "rnnpool"
     mbconv = "mbconv"
+    resnet18 = "resnet-18"
+    resnet50 = "resnet-50"
     test = "test"
     default = [bonsai, protonn]
-    all = [bonsai, lenet, protonn, rnn, rnnpool, mbconv, test]
+    all = [bonsai, lenet, protonn, rnn, rnnpool, mbconv, resnet18, resnet50, test]
 
 
 class Version:

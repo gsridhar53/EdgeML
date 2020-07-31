@@ -21,13 +21,13 @@ import seedot.util as Util
 
 class Main:
 
-    def __init__(self, algo, version, target, trainingFile, testingFile, modelDir, sf, maximisingMetric, dataset, numOutputs, source):
+    def __init__(self, algo, version, target, trainingFile, testingFile, modelDir, sf, metric, dataset, numOutputs, source):
         self.algo, self.version, self.target = algo, version, target
         self.trainingFile, self.testingFile, self.modelDir = trainingFile, testingFile, modelDir
         self.sf = sf
         self.dataset = dataset
         self.accuracy = {}
-        self.maximisingMetric = maximisingMetric
+        self.metric = metric
         self.numOutputs = numOutputs
         self.source = source
         self.variableSubstitutions = {} #evaluated during profiling code run
@@ -205,12 +205,12 @@ class Main:
                     file.write("\nAccuracy at scale factor %d is %.3f%%, Disagreement Count is %d, Reduced Disagreement Count is %d\n" % (sf, execMap[str(codeId)][0], execMap[str(codeId)][1], execMap[str(codeId)][2]))
                     file.close()
         else:
-            def getMaximisingMetricValue(a):
-                if self.maximisingMetric == config.MaximisingMetric.accuracy:
+            def getMetricValue(a):
+                if self.metric == config.Metric.accuracy:
                     return (a[1][0], -a[1][1], -a[1][2])
-                elif self.maximisingMetric == config.MaximisingMetric.disagreements:
+                elif self.metric == config.Metric.disagreements:
                     return (-a[1][1], -a[1][2], a[1][0])
-                elif self.maximisingMetric == config.MaximisingMetric.reducedDisagreements:
+                elif self.metric == config.Metric.reducedDisagreements:
                     return (-a[1][2], -a[1][1], a[1][0])
             allVars = []
             for demotedVars in demotedVarsToOffsetToCodeId:
@@ -218,14 +218,14 @@ class Main:
                 print("Demoted vars: %s\n" % str(demotedVars))
                 
                 x = [(i, execMap[str(offsetToCodeId[i])]) for i in offsetToCodeId]
-                x.sort(key=getMaximisingMetricValue, reverse=True)
+                x.sort(key=getMetricValue, reverse=True)
                 allVars.append(((demotedVars, x[0][0]), x[0][1]))
 
                 for offset in offsetToCodeId:
                     codeId = offsetToCodeId[offset]
                     print("Offset %d (Code ID %d): Accuracy %.3f%%, Disagreement Count %d, Reduced Disagreement Count %d\n" %(offset, codeId, execMap[str(codeId)][0], execMap[str(codeId)][1], execMap[str(codeId)][2]))
             if not doNotSort:
-                allVars.sort(key=getMaximisingMetricValue, reverse=True)
+                allVars.sort(key=getMetricValue, reverse=True)
             self.varDemoteDetails = allVars
         return True, False
 
@@ -408,19 +408,19 @@ class Main:
     # Reverse sort the accuracies, print the top 5 accuracies and return the
     # best scaling factor
     def getBestScale(self):
-        def getMaximisingMetricValue(a):
-            if self.maximisingMetric == config.MaximisingMetric.accuracy:
+        def getMetricValue(a):
+            if self.metric == config.Metric.accuracy:
                 return (a[1][0], -a[1][1], -a[1][2]) if not config.higherOffsetBias else (a[1][0], -a[0])
-            elif self.maximisingMetric == config.MaximisingMetric.disagreements:
+            elif self.metric == config.Metric.disagreements:
                 return (-a[1][1], -a[1][2], a[1][0]) if not config.higherOffsetBias else (-max(5, a[1][1]), -a[0])
-            elif self.maximisingMetric == config.MaximisingMetric.reducedDisagreements:
+            elif self.metric == config.Metric.reducedDisagreements:
                 return (-a[1][2], -a[1][1], a[1][0]) if not config.higherOffsetBias else (-max(5, a[1][2]), -a[0])
-            elif self.algo == config.Algo.test:
+            elif self.metric == config.Metric.regressionLoss:
                 # minimize regression error
                 return (-a[1][0])    
 
         x = [(i, self.accuracy[i]) for i in self.accuracy]
-        x.sort(key=getMaximisingMetricValue, reverse=True)
+        x.sort(key=getMetricValue, reverse=True)
         sorted_accuracy = x[:5]
         print(sorted_accuracy)
         return sorted_accuracy[0][0]

@@ -144,7 +144,7 @@ class InferType(astVisitor.ASTVisitor):
         return node.type
 
     # Reduces the shape of a tensor by choosing the maximum from a filter
-    def visitMaxpool(self, node: ast.Maxpool):
+    def visitPool(self, node: ast.Pool):
         node.expr.gamma = dict(node.gamma)
         exprType = self.visit(node.expr)
 
@@ -159,8 +159,6 @@ class InferType(astVisitor.ASTVisitor):
         HPADR = node.padding[1]
         WPADL = node.padding[2]    
         WPADR = node.padding[3]
-
-        assert HPADL == HPADR == WPADL == WPADR == 0, "Non zero paddings not supported currently"
 
         outH =  ((H + HPADL + HPADR - FH)//node.stride[0]) + 1
         outW = ((W + WPADL + WPADR - FW)//node.stride[1]) + 1

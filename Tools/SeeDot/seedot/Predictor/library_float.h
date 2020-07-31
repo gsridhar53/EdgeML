@@ -22,6 +22,9 @@ void MatMulCN(const float *A, float *B, float *C, float *tmp, MYINT I, MYINT K, 
 void MatMulNC(float *A, const float *B, float *C, float *tmp, MYINT I, MYINT K, MYINT J, MYINT shrA, MYINT shrB, MYINT H1, MYINT H2);
 void MatMulCC(const float *A, const float *B, float *C, float *tmp, MYINT I, MYINT K, MYINT J, MYINT shrA, MYINT shrB, MYINT H1, MYINT H2);
 
+void MatAddNN(float *A, float *B, float *C, MYINT I, MYINT J, MYINT K, MYINT L, MYINT shrA, MYINT shrB, MYINT shrC);
+
+
 void SparseMatMul(const MYINT *Aidx, const float *Aval, float **B, float *C, int16_t K, MYINT shrA, MYINT shrB, MYINT shrC);
 
 void MulCir(float *A, float *B, float *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB);
@@ -31,6 +34,7 @@ void TanH(float *A, MYINT I, MYINT J, float scale_in, float scale_out, float *B)
 void ArgMax(float *A, MYINT I, MYINT J, MYINT *index);
 
 void Transpose(float *A, float *B, MYINT I, MYINT J);
+void Transpose(const float *A, float *B, MYINT I, MYINT J);
 
 void ScalarMul(float *A, float *B, float *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB);
 
@@ -50,7 +54,9 @@ void Relu2D(float *A, MYINT H, MYINT W);
 
 void Relu6(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT six, MYINT div);
 
-void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR);
+void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight);
+
+void Avgpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight);
 
 void Exp(float *A, MYINT I, MYINT J, MYINT shrA, MYINT shrB, float *B);
 

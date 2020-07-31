@@ -65,12 +65,14 @@ class ASTBuilder(SeeDotVisitor):
                  for IntConst in ctx.intConstList(1).IntConst()]
         return AST.Reshape(expr, shape, order)
 
-    def visitMaxpool(self, ctx: SeeDotParser.MaxpoolContext):
+    # Other pool types are not yet added in the SeeDot grammar
+    # those work from other frontends    
+    def visitpool(self, ctx: SeeDotParser.MaxpoolContext):
         expr = self.visit(ctx.expr())
         kernelSize = [int(ctx.IntConst(i).getText()) for i in range(0, 2)]
         padding = [int(ctx.IntConst(i).getText()) for i in range(2, 6)]
         stride = [int(ctx.IntConst(i).getText()) for i in range(6, 8)]
-        return AST.Maxpool(expr, kernelSize, padding, stride)
+        return AST.pool(expr, kernelSize, padding, stride, "maxpool")
 
     def visitReverse(self, ctx: SeeDotParser.MaxpoolContext):
         expr = self.visit(ctx.expr())

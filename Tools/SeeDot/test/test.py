@@ -90,7 +90,7 @@ class TestNode(unittest.TestCase):
 
 		# need to create random input and output
 		input_dims = common.proto_val_to_dimension_tuple(model.graph.input[0])
-		inp = self._get_rnd_float32(shape=input_dims, get_np_array=True)	
+		inp = self._get_rnd_float32(shape=input_dims, get_np_array=True, low=0, high=256)	
 		op = self.get_onnx_output(model_path, inp)		
 
 		# print(type(inp), type(op))
@@ -118,7 +118,7 @@ class TestNode(unittest.TestCase):
 		config.vbwEnabled = False
 
 		obj = main.Main(config.Algo.test, config.Version.fixed, config.Target.x86, training_input, testing_input, 
-			'model', None, None, None, self.get_list_prod(output_shape), config.Source.onnx)
+			'model', None, config.Metric.regressionLoss , None, self.get_list_prod(output_shape), config.Source.onnx)
 		obj.run()			
 
 	def test_relu(self):
@@ -144,13 +144,11 @@ class TestNode(unittest.TestCase):
 		    )
 		self.check_result(graph, name, output_shape)
 
-	# TODO: Fix maxpool	
-	# currently only support 0 padding and stride[2,2]
-	# does not even work with strides = [1,1]
+	# TODO: padding -inf vs 0 in case of maxpool?
 	def test_maxpool(self):
 		name = "maxpool"
 		input_shape = [1, 1, 6, 6]
-		output_shape = [1, 1, 3, 3]
+		output_shape = [1, 1, 5, 5]
 
 		X = helper.make_tensor_value_info('X', TensorProto.FLOAT, [self.get_list_prod(input_shape), 1])
 
@@ -160,7 +158,7 @@ class TestNode(unittest.TestCase):
 
 		state_out  = helper.make_tensor_value_info('state_out',
 		                                               TensorProto.FLOAT, output_shape)
-		node_def = helper.make_node("MaxPool", ['state_in'], ['state_out'], kernel_shape=[2, 2], strides=[2,2])
+		node_def = helper.make_node("MaxPool", ['state_in'], ['state_out'], kernel_shape=[2, 2], strides=[1,1])
 		graph = helper.make_graph(
 		        [reshape_node, node_def],
 		        name,
@@ -170,11 +168,36 @@ class TestNode(unittest.TestCase):
 		    )
 		self.check_result(graph, name, output_shape)	
 
+	# sometimes the sum overflows
+	# TODO: replace int32 instead of MYINT for sum		
+	def test_avgpool(self):
+		name = "maxpool"
+		input_shape = [1, 1, 6, 6]
+		output_shape = [1, 1, 1, 1]
+
+		X = helper.make_tensor_value_info('X', TensorProto.FLOAT, [self.get_list_prod(input_shape), 1])
+
+		shape_param = helper.make_tensor('shape_param', TensorProto.INT64, [4], input_shape)
+
+		reshape_node = helper.make_node("Reshape", ['X', 'shape_param'], ['state_in'])
+
+		state_out  = helper.make_tensor_value_info('state_out',
+		                                               TensorProto.FLOAT, output_shape)
+		node_def = helper.make_node("GlobalAveragePool", ['state_in'], ['state_out'])
+		graph = helper.make_graph(
+		        [reshape_node, node_def],
+		        name,
+		        [X],
+		        [state_out],
+		        [shape_param]
+		    )
+		self.check_result(graph, name, output_shape)		
+
 	# TODO: with group!=1 
 	def test_conv2d(self):
 		name = "conv2d"
-		input_shape = [1, 3, 10, 10]
-		output_shape = [1, 6, 5, 5]
+		input_shape = [1, 3, 224, 224]
+		output_shape = [1, 64, 112, 112]
 
 		X = helper.make_tensor_value_info('X', TensorProto.FLOAT, [self.get_list_prod(input_shape), 1])
 
@@ -185,9 +208,9 @@ class TestNode(unittest.TestCase):
 		state_out  = helper.make_tensor_value_info('state_out',
 		                                               TensorProto.FLOAT, output_shape)
 		node_def = helper.make_node("Conv", ['state_in', 'weight'], ['state_out'],
-		                                pads=[1, 1, 1, 1], strides=[2, 2], kernel_shape=[3, 3], group=1)
+		                                pads=[3, 3, 3, 3], strides=[2, 2], kernel_shape=[7, 7], group=1)
 
-		weight_shape = [6, 3, 3, 3]
+		weight_shape = [64, 3, 7, 7]
 		weight_val = self._get_rnd_float32(shape=weight_shape)
 
 		weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
@@ -201,161 +224,51 @@ class TestNode(unittest.TestCase):
 		    )
 		self.check_result(graph, name, output_shape)	
 
-	# def test_pad(self):
-	# 	name = "pad"
-	# 	state_in = helper.make_tensor_value_info('state_in', TensorProto.FLOAT, [1, 3, 10, 10])
-	# 	pads  = helper.make_tensor_value_info('pads', TensorProto.INT64, [8])
-	# 	pad_init = numpy_helper.from_array(np.array([0,0,1,1,0,0,1,1], dtype=int), name='pads')
-	# 	const_val  = helper.make_tensor_value_info('const_val', TensorProto.FLOAT, [1])
-	# 	const_val_init = numpy_helper.from_array(np.array([0.0], dtype=np.float32), name='const_val')
-	# 	state_out  = helper.make_tensor_value_info('state_out', TensorProto.FLOAT, [1,3,12,12])
-	# 	node_def = helper.make_node("Pad", ['state_in', 'pads', 'const_val'], ['state_out'], mode="constant")
-	# 	graph = helper.make_graph([node_def],name,[state_in, pads, const_val],[state_out],initializer=[pad_init, const_val_init])
-	# 	self.check_result(graph, name)
+	def test_bn(self):
+		name = "batchnormalization"
+		input_shape = [1, 2, 3, 3]
+		output_shape = [1, 2, 3, 3]
+
+		X = helper.make_tensor_value_info('X', TensorProto.FLOAT, [self.get_list_prod(input_shape), 1])
+
+		shape_param = helper.make_tensor('shape_param', TensorProto.INT64, [4], input_shape)
+
+		reshape_node = helper.make_node("Reshape", ['X', 'shape_param'], ['state_in'])
+
+		state_out  = helper.make_tensor_value_info('state_out',
+		                                               TensorProto.FLOAT, output_shape)
+
+		node_def = helper.make_node("BatchNormalization", ['state_in', 'weight', 'bias','mean','var'], ['state_out'],
+	                                momentum=0.8999999761581421)
+
+		weight_shape = [2]
+		weight_val = self._get_rnd_float32(shape=weight_shape)
+		weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
+
+		bias_shape = [2]
+		# bias_val = [1e-5,1e-5]
+		bias_val = self._get_rnd_float32(shape=weight_shape)
+		bias = helper.make_tensor('bias', TensorProto.FLOAT, bias_shape, bias_val)
+
+		mean_shape = [2]
+		# mean_val = [1e-5,1e-5]
+		mean_val = self._get_rnd_float32(shape=weight_shape)
+		mean = helper.make_tensor('mean', TensorProto.FLOAT, mean_shape, mean_val)
 
 
-	# def test_relu3d(self):
-	# 	name = "relu3d"
-	# 	state_in = helper.make_tensor_value_info('state_in',
-	# 	                                             TensorProto.FLOAT, [1, 3, 7, 7, 7])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 3, 7, 7, 7])
-	# 	node_def = helper.make_node("Relu", ['state_in'], ['state_out'])
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        []
-	# 	    )
-	# 	self.check_result(graph, name)	
+		var_shape = [2]
+		# var_val = [1,1]
+		var_val = self._get_rnd_float32(shape=weight_shape, low=0, high=1)
+		var = helper.make_tensor('var', TensorProto.FLOAT, var_shape, var_val)
 
-	# def test_reducemean(self):
-	# 	name = "reducemean"
-	# 	state_in = helper.make_tensor_value_info('state_in',
-	# 	                                             TensorProto.FLOAT, [1, 1024, 7, 7])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 1024])
-	# 	node_def = helper.make_node("ReduceMean", ['state_in'], ['state_out'], axes=[2,3], keepdims=0)
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        []
-	# 	    )
-	# 	self.check_result(graph, name)
-
-	# def test_batchnormalization(self):
-	# 	name = "batchnormalization"
-	# 	state_in = helper.make_tensor_value_info('state_in',
-	# 	                                             TensorProto.FLOAT, [1, 24, 10, 10])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 24, 10, 10])
-	# 	node_def = helper.make_node("BatchNormalization", ['state_in', 'weight', 'bias','mean','var'], ['state_out'],
-	# 	                                momentum=0.8999999761581421)
-
-	# 	weight_shape = [24]
-	# 	weight_val = self._get_rnd_float32(shape=weight_shape)
-	# 	weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
-
-	# 	bias_shape = [24]
-	# 	bias_val = self._get_rnd_float32(shape=weight_shape)
-	# 	bias = helper.make_tensor('bias', TensorProto.FLOAT, bias_shape, bias_val)
-
-	# 	mean_shape = [24]
-	# 	mean_val = self._get_rnd_float32(shape=weight_shape)
-	# 	mean = helper.make_tensor('mean', TensorProto.FLOAT, mean_shape, mean_val)
-
-
-	# 	var_shape = [24]
-	# 	var_val = self._get_rnd_float32(shape=weight_shape, low=0, high=1)
-	# 	var = helper.make_tensor('var', TensorProto.FLOAT, var_shape, var_val)
-
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        [weight, bias, mean, var]
-	# 	    )
-	# 	self.check_result(graph, name)	
-
-		# def test_conv3d(self):
-	# 	name = "conv3d"
-	# 	state_in = helper.make_tensor_value_info('state_in',TensorProto.FLOAT, [1, 2, 64, 256, 256])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 2, 64, 256, 256])
-	# 	node_def = helper.make_node("Conv", ['state_in', 'weight'], ['state_out'],
-	# 	                                pads=[1, 1, 1, 1, 1, 1], strides=[1, 1, 1], kernel_shape=[3, 3, 3])
-
-	# 	weight_shape = [2, 2, 3, 3, 3]
-	# 	weight_val = self._get_rnd_float32(shape=weight_shape)
-	# 	np.save('weight', weight_val)
-
-	# 	weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
-
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        [weight]
-	# 	    )
-	# 	self.check_result(graph, name)	
-
-	# def test_conv_transpose(self):
-	# 	name = "conv_transpose"
-	# 	state_in = helper.make_tensor_value_info('state_in',
-	# 	                                             TensorProto.FLOAT, [1, 3, 10, 10])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 5, 19, 19])
-	# 	node_def = helper.make_node("ConvTranspose", ['state_in', 'weight'], ['state_out'],
-	# 	                                pads=[1, 1, 1, 1], strides=[2, 2], kernel_shape=[3, 3])
-
-	# 	weight_shape = [3, 5, 3, 3]
-	# 	weight_val = self._get_rnd_float32(shape=weight_shape)
-
-	# 	weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
-
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        [weight]
-	# 	    )
-
-	# 	self.check_result(graph, name)
-
-	# # For this to run onnx_run_tf.py should be used in the compile script
-	# # since onnxruntime does not support convtranspose3d	
-	# def test_conv_transpose3d(self):
-	# 	name = "conv3dTranspose"
-	# 	state_in = helper.make_tensor_value_info('state_in',
-	# 	                                             TensorProto.FLOAT, [1, 3, 10, 10, 10])
-	# 	state_out  = helper.make_tensor_value_info('state_out',
-	# 	                                               TensorProto.FLOAT, [1, 5, 19, 19, 19])
-	# 	node_def = helper.make_node("ConvTranspose", ['state_in', 'weight', 'bias'], ['state_out'],
-	# 									# check with pads which are not 1
-	# 	                                pads=[1, 1, 1, 1, 1, 1], strides=[2, 2, 2], kernel_shape=[3, 3, 3])
-
-	# 	weight_shape = [3, 5, 3, 3, 3]
-	# 	weight_val = self._get_rnd_float32(shape=weight_shape)
-	# 	bias_shape = [5]
-	# 	bias_val = self._get_rnd_float32(shape=bias_shape)
-
-	# 	weight = helper.make_tensor('weight', TensorProto.FLOAT, weight_shape, weight_val)
-	# 	bias = helper.make_tensor('bias', TensorProto.FLOAT, bias_shape, bias_val)
-
-	# 	graph = helper.make_graph(
-	# 	        [node_def],
-	# 	        name,
-	# 	        [state_in],
-	# 	        [state_out],
-	# 	        [weight, bias]
-	# 	    )
-	# 	self.check_result(graph, name)	
+		graph = helper.make_graph(
+		        [reshape_node, node_def],
+		        name,
+		        [X],
+		        [state_out],
+		        [shape_param, weight, bias, mean, var]
+		    )
+		self.check_result(graph, name, output_shape)	
 
 if __name__ == '__main__':
 	unittest.main()
