@@ -191,7 +191,12 @@ class X86(CodegenBase):
                 shape_str = ''.join(['[' + str(n) + ']' for n in type.shape])
 
             if not config.vbwEnabled:
-                self.out.printf('%s %s%s;\n', typ_str, idf_str, shape_str, indent=True)
+                if Type.isTensor(type):
+                    self.dynamic_allocated_array_shape[idf_str] = type.shape
+                    shape_prod_str = ('*'.join([str(n) for n in type.shape])) 
+                    self.out.printf('%s* %s = new %s[%s];\n', typ_str, idf_str, typ_str, shape_prod_str, indent=True)
+                else:
+                    self.out.printf('%s %s%s;\n', typ_str, idf_str, shape_str, indent=True)
                 if self.generateAllFiles:
                     varsFile.printf('extern %s %s%s;\n', typ_str,
                                 idf_str, shape_str, indent=True)

@@ -16,6 +16,8 @@ from seedot.util import *
 
 class CodegenBase:
 
+    dynamic_allocated_array_shape = {}
+    
     def __init__(self, writer):
         self.out = writer
 
@@ -46,10 +48,26 @@ class CodegenBase:
                 assert False, "Illegal state, codegenBase must have variable bitwidth info for VBW mode"
         else:
             self.out.printf("%s", ir.idf)
-        for e in ir.idx:
+
+        if ir.idf in self.dynamic_allocated_array_shape and len(ir.idx)>0: 
+            shape = self.dynamic_allocated_array_shape[ir.idf]
             self.out.printf('[')
-            self.print(e)
-            self.out.printf(']')
+            for i in range(len(ir.idx)):
+                self.print(ir.idx[i])
+
+                prod = 1
+                for j in range(i+1, len(ir.idx)):
+                    prod = prod*shape[j]
+
+                if i!= len(ir.idx)-1:
+                    self.out.printf('*' + str(prod) + ' + ')    
+
+            self.out.printf(']')    
+        else:     
+            for e in ir.idx:
+                self.out.printf('[')
+                self.print(e)
+                self.out.printf(']')
 
     def printBool(self, ir):
         self.out.printf({True: 'true', False: 'false'}[ir.b])
@@ -190,10 +208,10 @@ class CodegenBase:
                     x = -1
             else:
                 x = 0
-            if x != 0:
+            if x != 0 and arg.idf not in self.dynamic_allocated_array_shape:
                 self.out.printf("&")
             self.print(arg)
-            if x != 0 and x != -1:
+            if x != 0 and x != -1 and arg.idf not in self.dynamic_allocated_array_shape:
                 self.out.printf("[0]" * x)
             if i != len(keys) - 1:
                 self.out.printf(", ")

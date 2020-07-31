@@ -25,7 +25,7 @@ class Dataset:
     common = ["cifar-binary", "cr-binary", "cr-multiclass", "curet-multiclass",
               "letter-multiclass", "mnist-binary", "mnist-multiclass",
               "usps-binary", "usps-multiclass", "ward-binary", "test"]
-    extra = ["cifar-multiclass", "dsa", "eye-binary", "farm-beats",
+    extra = ["cifar-multiclass", "imagenet", "dsa", "eye-binary", "farm-beats",
              "interactive-cane", "spectakoms", "usps10", "whale-binary",
              "HAR-2", "HAR-6", "MNIST-10", "Google-12", "Google-30", "Wakeword-2",
              "wider-regression", "wider-mbconv", "face-1", "face-2"]
@@ -51,8 +51,8 @@ class MainDriver:
                             default=config.Version.default, metavar='', help="Floating-point or fixed-point")
         parser.add_argument("-d", "--dataset", choices=Dataset.all,
                             default=Dataset.default, metavar='', help="Dataset to use")
-        parser.add_argument("-m", "--maximisingMetric", choices=config.MaximisingMetric.all, metavar='', 
-                            help="What metric to maximise during exploration",default=config.MaximisingMetric.default)
+        parser.add_argument("-m", "--metric", choices=config.Metric.all, metavar='', 
+                            help="What metric to maximise during exploration",default=config.Metric.default)
         parser.add_argument("-n", "--numOutputs", type=int, metavar='', 
                             help="Number of simultaneous outputs of the inference procedure",default=1)
         parser.add_argument("-dt", "--datasetType", choices=config.DatasetType.all,
@@ -89,8 +89,8 @@ class MainDriver:
             self.args.datasetType = [self.args.datasetType]
         if not isinstance(self.args.target, list):
             self.args.target = [self.args.target]
-        if not isinstance(self.args.maximisingMetric, list):
-            self.args.maximisingMetric = [self.args.maximisingMetric]
+        if not isinstance(self.args.metric, list):
+            self.args.metric = [self.args.metric]
 
         if self.args.tempdir is not None:
             assert os.path.isdir(
@@ -148,8 +148,8 @@ class MainDriver:
 
         results = self.loadResultsFile()
 
-        for iter in product(self.args.algo, self.args.version, self.args.dataset, self.args.target, self.args.maximisingMetric, [16]):
-            algo, version, dataset, target, maximisingMetric, wordLength = iter
+        for iter in product(self.args.algo, self.args.version, self.args.dataset, self.args.target, self.args.metric, [16]):
+            algo, version, dataset, target, metric, wordLength = iter
 
             #config.wordLength = wordLength
             #config.maxScaleRange = 0, -wordLength
@@ -243,7 +243,7 @@ class MainDriver:
             numOutputs = self.args.numOutputs
 
             obj = main.Main(algo, version, target, trainingInput,
-                            testingInput, modelDir, sf, maximisingMetric, dataset, numOutputs, self.args.source)
+                            testingInput, modelDir, sf, metric, dataset, numOutputs, self.args.source)
             obj.run()
 
             acc = obj.testingAccuracy

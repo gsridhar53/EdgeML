@@ -23,7 +23,7 @@ class MtdAST(ASTVisitor):
         node.metadata.update(mtd)
         self.visit(node.expr, mtd)
 
-    def visitMaxpool(self, node: AST.Maxpool, mtd: dict):
+    def visitPool(self, node: AST.Pool, mtd: dict):
         node.metadata.update(mtd)
         self.visit(node.expr, mtd)
 

@@ -54,6 +54,8 @@ def getParams(file_path):
 	
 	model_name_to_val_dict = { init_vals.name: numpy_helper.to_array(init_vals).tolist() for init_vals in model.graph.initializer}
 
+	preprocess_batch_normalization(graph_def, model_name_to_val_dict)
+
 	paramList = []
 
 	for init_vals in model.graph.initializer:
@@ -61,7 +63,7 @@ def getParams(file_path):
 		shape = numpy_helper.to_array(init_vals).shape
 		range = get_range(numpy_helper.to_array(init_vals))
 		param = Param(name, shape, range)
-		param.data = numpy_helper.to_array(init_vals).reshape((1,-1)).tolist()
+		param.data = np.array(model_name_to_val_dict[name]).reshape(1,-1).tolist()
 		paramList.append(param) 
 
 	return paramList	
@@ -81,9 +83,11 @@ def preprocess_batch_normalization(graph_def, model_name_to_val_dict):
 			var = model_name_to_val_dict[node.input[4]]
 			for i in range(len(gamma)):
 				rsigma = 1/math.sqrt(var[i]+1e-5)
+				# print(gamma[i]," --> ",gamma[i]*rsigma)
 				gamma[i] = gamma[i]*rsigma
+				# print(beta[i]," --> ", beta[i]-gamma[i]*mean[i])
 				beta[i] = beta[i]-gamma[i]*mean[i]	
-				mean[i] = 0
+				mean[i] = 1e-5
 				var[i] = 1-1e-5
 
 	# Just testing if the correct values are put			
@@ -96,7 +100,7 @@ def preprocess_batch_normalization(graph_def, model_name_to_val_dict):
 		if(node.op_type == 'BatchNormalization'):
 			mean = model_name_to_val_dict[node.input[3]]
 			for val in mean:
-				assert(val == 0)
+				assert(val < 1e-4)
 
 if __name__ == "__main__":
 	main()											

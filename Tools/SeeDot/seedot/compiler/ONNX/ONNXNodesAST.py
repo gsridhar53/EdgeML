@@ -177,7 +177,12 @@ def get_reshaped_bias_ast(bias_name, value_info, node_name_to_out_var_dict, dim)
 def get_reshaped_filter_ast(filter_name, value_info, node_name_to_out_var_dict):
 	onnx_filter_shape = list(value_info[filter_name][1])
 	(seedot_filter_shape, seedot_filter_order) = get_seedot_filter_shape_order(onnx_filter_shape)
-	return AST.Reshape(AST.ID(node_name_to_out_var_dict[filter_name]), seedot_filter_shape, seedot_filter_order)		
+	return AST.Reshape(AST.ID(node_name_to_out_var_dict[filter_name]), seedot_filter_shape, seedot_filter_order)
+
+def get_reshaped_bn_scale_as_conv_filter_ast(filter_name, value_info, node_name_to_out_var_dict):
+	onnx_scale_shape = value_info[filter_name][1][0]
+	(seedot_filter_shape, seedot_filter_order) = ([onnx_scale_shape,1,1,1,1], None)
+	return AST.Reshape(AST.ID(node_name_to_out_var_dict[filter_name]), seedot_filter_shape, seedot_filter_order)			
 
 def get_reshaped_output_ast(onnx_output_name, value_info, output_name):	
 	onnx_output_shape = list(value_info[onnx_output_name][1])
@@ -210,11 +215,16 @@ class ONNXNodesAST:
 		# return AST.Input(dims, onnx2seedot(data_type))
 
 		from onnx import numpy_helper
-		range = (-3,3)
 		
+		# TODO: extract the range from training file
+		# for imagenet 
+		range = (0,250)
+		# for lenet
+		# range = (-3, 3)
+
+
 		if init_val is not None:
-			arr = numpy_helper.to_array(init_val)
-			range = (np.min(arr),np.max(arr))
+			range = (np.min(init_val),np.max(init_val))
 
 		return AST.Decl(dims, range)
 
@@ -398,8 +408,8 @@ class ONNXNodesAST:
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, reshaped_input1, reshaped_input_name1, mtdAST)
 		out_var_count += 1
 
-		seedot_output_ast = AST.BOp(AST.ID(reshaped_input_name),
-							getOperatorsIdx('+'),
+		seedot_output_ast = AST.Bop2(AST.ID(reshaped_input_name),
+							SeeDotParser.ADD,
 							AST.ID(reshaped_input_name1)
 							)
 		output_name = get_new_var_name(out_var_count)
@@ -523,28 +533,57 @@ class ONNXNodesAST:
 		# Are running mean and var used for something?
 		assert(len(inputsRef)==5)
 
+		# inputsRef = node.inputs
+		inputShape = value_info[inputsRef[0]][1]
+		filterShape = value_info[inputsRef[1]][1]
+
+		stridesUsed = [1,1]
+		group = value_info[inputsRef[1]][1][0]
+		padding = [0,0,0,0]
+		dilation =  [1,1]
+		
+		# BN has 5 inputs. Though we are preprocessing them and reducing it to 3 (input, scale, bias)
+		# Last 2 inputs are unused 
+		assert(len(inputsRef)==5)
+		assert(len(stridesUsed)==2)
+
+		# we assume VALID case when the padding is in string format
+
+		# print(inputShape, filterShape)
+		#in case of BN filter has only one dimension i.e. number of channels
+		assert (inputShape[1] == group)
+		# For Input:
+		# [N, CI, H, W] is the Onnx order it should be changed to 
+		# [N, H, W, CI] order 
 		reshaped_input_name = get_new_var_name(out_var_count)
 		reshaped_input = get_reshaped_input_ast(inputsRef[0], value_info, node_name_to_out_var_dict)
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, reshaped_input, reshaped_input_name, mtdAST)
 		out_var_count += 1
 
-		seedot_output_ast = AST.FusedBatchNorm(AST.ID(reshaped_input_name),
-										 AST.ID(node_name_to_out_var_dict[inputsRef[1]]),
-										 AST.ID(node_name_to_out_var_dict[inputsRef[2]]),
-										)	
+		# For filter:
+		# [CO, CI1, FH, FW] is the Onnx order it should be changed to 
+		# [FH, FW, CI1, CO] order
+		reshaped_filter_name = get_new_var_name(out_var_count)
+		reshaped_filter = get_reshaped_bn_scale_as_conv_filter_ast(inputsRef[1], value_info, node_name_to_out_var_dict)
+		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, reshaped_filter, reshaped_filter_name, mtdAST)
+		out_var_count += 1
+
+		seedot_output_ast =  AST.Convolution(AST.ID(reshaped_input_name), AST.ID(reshaped_filter_name), stridesUsed, padding, dilation, group)
+		output_name = get_new_var_name(out_var_count)
+		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, seedot_output_ast, output_name, mtdAST)
+		out_var_count += 1
+
+		# If there is bias to be added then reshape and add it 
+		seedot_output_ast =  AST.Bop1(AST.ID(output_name), SeeDotParser.ADDCIR, AST.ID(inputsRef[2]))
 		output_name = get_new_var_name(out_var_count)
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, seedot_output_ast, output_name, mtdAST)
 		out_var_count += 1
 
 		reshaped_output_name = get_new_var_name(out_var_count)
-		onnx_output_ast = get_reshaped_output_ast(node.outputs[0], value_info, output_name)
-		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, onnx_output_ast, reshaped_output_name, mtdAST)	
+		onnx_output_ast = get_reshaped_output_ast(node.outputs[0],value_info, output_name)
+		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, onnx_output_ast, reshaped_output_name, mtdAST)
 		out_var_count += 1
 		node_name_to_out_var_dict[node.outputs[0]] = reshaped_output_name
-		
-		if(DEBUG):
-			print(node.outputs[0])
-			print(onnx_input_shape, '->', seedot_input_shape, '->', onnx_output_shape)
 
 		return (innermost_let_ast_node, out_var_count) 	
 
@@ -718,19 +757,15 @@ class ONNXNodesAST:
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, reshaped_input, reshaped_input_name, mtdAST)
 		out_var_count += 1
 
-		seedot_output_ast = AST.Pool(AST.Pool.PoolType.AvgPool,
+		stridesUsed = [1,1]
+		kernelSize = [value_info[inputsRef[0]][1][2], value_info[inputsRef[0]][1][3]]
+		padding = [0,0,0,0]
+
+		seedot_output_ast = AST.Pool(
 							  AST.ID(reshaped_input_name),
-							  {
-							  	AST.PaddingKeysDict.FH: value_info[inputsRef[0]][1][2],
-							  	AST.PaddingKeysDict.FW: value_info[inputsRef[0]][1][3],
-							  	AST.PaddingKeysDict.zPadHLeft: 0,
-							  	AST.PaddingKeysDict.zPadHRight: 0,
-							  	AST.PaddingKeysDict.zPadWLeft: 0,
-							  	AST.PaddingKeysDict.zPadWRight: 0,
-							  	AST.PaddingKeysDict.strideH: 1,
-							  	AST.PaddingKeysDict.strideW: 1
-							  }
-							)	
+							  kernelSize, padding, stridesUsed, "avgpool"
+							)
+
 		output_name = get_new_var_name(out_var_count)
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, seedot_output_ast, output_name, mtdAST)
 		out_var_count += 1
@@ -762,14 +797,14 @@ class ONNXNodesAST:
 		out_var_count += 1
 
 		poolType = None
-		if typeOfPool=='MAXPOOL': poolType = AST.Maxpool
-		elif typeOfPool=='AVGPOOL': poolType = AST.Avgpool
+		if typeOfPool=='MAXPOOL': poolType = "maxpool"
+		elif typeOfPool=='AVGPOOL': poolType = "avgpool"
 		else: 
 			print("Unknown type of pooling layer.", file=sys.stderr)
 			assert(False)
-		seedot_output_ast = poolType(
+		seedot_output_ast = AST.Pool(
 							  AST.ID(reshaped_input_name),
-							  kernelSize, padding, stridesUsed
+							  kernelSize, padding, stridesUsed, poolType
 							)
 		output_name = get_new_var_name(out_var_count)
 		innermost_let_ast_node = update_program_with_new_node(innermost_let_ast_node, seedot_output_ast, output_name, mtdAST)

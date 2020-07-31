@@ -46,12 +46,15 @@ import numpy
 import seedot.compiler.ONNX.common as common
 
 import numpy as np
+from onnx import numpy_helper
+import math
+
 np.set_printoptions(threshold=np.inf)
 
 DEBUG = False
 out_var_prefix = "J"
 
-def process_input_variables(program, innermost_let_ast_node, node_name_to_out_var_dict, out_var_count, mtdAST, graph_def, value_info):
+def process_input_variables(program, innermost_let_ast_node, node_name_to_out_var_dict, out_var_count, mtdAST, graph_def, value_info, model_name_to_val_dict):
 	node = graph_def.input[0]
 	curAst = ONNXNodesAST.Input(node, value_info, node_name_to_out_var_dict)
 	mtdForCurAST = {AST.ASTNode.mtdKeyTFOpName : 'Input',
@@ -78,7 +81,7 @@ def process_input_variables(program, innermost_let_ast_node, node_name_to_out_va
 			print("Node information")
 			print(node)	
 	
-		curAst = ONNXNodesAST.Input(node, value_info, node_name_to_out_var_dict, node)
+		curAst = ONNXNodesAST.Input(node, value_info, node_name_to_out_var_dict, model_name_to_val_dict[node.name])
 		mtdForCurAST = {AST.ASTNode.mtdKeyTFOpName : 'Input',
 							AST.ASTNode.mtdKeyTFNodeName : node.name}
 		if (curAst is None):
@@ -114,6 +117,40 @@ def process_onnx_nodes(innermost_let_ast_node, node_name_to_out_var_dict, out_va
 		(innermost_let_ast_node, out_var_count) = func(node, value_info, node_name_to_out_var_dict, innermost_let_ast_node, out_var_count, mtdAST)					
 
 		assert(type(innermost_let_ast_node) is AST.Let)
+
+def preprocess_batch_normalization(graph_def, model_name_to_val_dict):
+	# set names to graph nodes if not present
+	for node in graph_def.node: 
+		node.name = node.output[0]
+		# Update the batch normalization scale and B
+		# so that mean and var are not required
+		if(node.op_type == 'BatchNormalization'):
+			# scale
+			gamma = model_name_to_val_dict[node.input[1]]
+			# B
+			beta = model_name_to_val_dict[node.input[2]]
+			mean = model_name_to_val_dict[node.input[3]]
+			var = model_name_to_val_dict[node.input[4]]
+			for i in range(len(gamma)):
+				rsigma = 1/math.sqrt(var[i]+1e-5)
+				# print(gamma[i]," --> ",gamma[i]*rsigma)
+				gamma[i] = gamma[i]*rsigma
+				# print(beta[i]," --> ", beta[i]-gamma[i]*mean[i])
+				beta[i] = beta[i]-gamma[i]*mean[i]	
+				mean[i] = 1e-5
+				var[i] = 1-1e-5
+
+	# Just testing if the correct values are put			
+	model_name_to_val_dict2 = {}
+	for init_vals in graph_def.initializer:
+		# TODO: Remove float_data
+		model_name_to_val_dict2[init_vals.name] = init_vals.float_data		
+	for node in graph_def.node: 
+		node.name = node.output[0]
+		if(node.op_type == 'BatchNormalization'):
+			mean = model_name_to_val_dict[node.input[3]]
+			for val in mean:
+				assert(val < 1e-4)
 
 def get_seedot_ast(file_path):
 	sys.setrecursionlimit(10000)
@@ -156,7 +193,10 @@ def get_seedot_ast(file_path):
 	out_var_count = 0
 	mtdAST = MtdAST()
 
-	(program, innermost_let_ast_node, out_var_count) = process_input_variables(program, innermost_let_ast_node, node_name_to_out_var_dict, out_var_count, mtdAST, graph_def, value_info)
+	model_name_to_val_dict = { init_vals.name: numpy_helper.to_array(init_vals).tolist() for init_vals in model.graph.initializer}
+	preprocess_batch_normalization(graph_def, model_name_to_val_dict)
+
+	(program, innermost_let_ast_node, out_var_count) = process_input_variables(program, innermost_let_ast_node, node_name_to_out_var_dict, out_var_count, mtdAST, graph_def, value_info, model_name_to_val_dict)
 
 	process_onnx_nodes(innermost_let_ast_node, node_name_to_out_var_dict, out_var_count, mtdAST, graph_def, value_info)
 

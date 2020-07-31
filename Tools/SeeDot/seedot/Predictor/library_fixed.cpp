@@ -32,6 +32,34 @@ void MatAddNN(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT 
 }
 
 // C = A + B
+void MatAddNN(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT K, MYINT L, MYINT shrA, MYINT shrB, MYINT shrC)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{
+			for (MYITE k = 0; k < K; k++)
+			{
+				for (MYITE l = 0; l < L; l++)
+				{
+					MYINT a = A[i * J * K * L + j * K * L + k * L + l];
+					MYINT b = B[i * J * K * L + j * K * L + k * L + l];
+
+					a = a / shrA;
+					b = b / shrB;
+
+					MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
+
+					C[i * J * K * L + j * K * L + k * L + l] = c;
+				}	
+			}
+		}
+	}
+	return;
+}
+
+
+// C = A + B
 void MatAddCN(const MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT shrC)
 {
 	for (MYITE i = 0; i < I; i++)
@@ -618,6 +646,18 @@ void Transpose(MYINT *A, MYINT *B, MYINT I, MYINT J)
 	return;
 }
 
+void Transpose(const MYINT *A, MYINT *B, MYINT I, MYINT J)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{
+			B[i * J + j] = A[j * I + i];
+		}
+	}
+	return;
+}
+
 // C = a * B
 void ScalarMul(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT shrB)
 {
@@ -947,34 +987,124 @@ void Relu2D(MYINT *A, MYINT H, MYINT W)
 }
 
 // B = maxpool(A)
-// A[N][H][W][C], B[N][H][W][C]
-void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR)
+// A[N][inH][inW][C], B[N][outH][outW][C]
+void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight)
 {
-	MYITE HO = H / strideH;
-	MYITE WO = W / strideW;
 
 	for (MYITE n = 0; n < N; n++)
-	{
-		for (MYITE ho = 0; ho < HO; ho++)
-		{
-			for (MYITE wo = 0; wo < WO; wo++)
-			{
-				for (MYITE c = 0; c < C; c++)
-				{
+	{	
+		for (MYITE c = 0; c < C; c++)
+		{	
+			MYITE leftTopCornerH = 0 - zPadHLeft;
+			MYITE extremeRightBottomCornerH = H - 1 + zPadHRight;
+			MYITE ctH = 0; 
 
-					MYINT max = A[n * H * W * C + (strideH * ho) * W * C + (strideW * wo) * C + c];
-					for (MYITE hs = 0; hs < FH; hs++)
+			while((leftTopCornerH + FH - 1) <= extremeRightBottomCornerH){
+				
+				MYITE leftTopCornerW = 0 - zPadWLeft;
+				MYITE extremeRightBottomCornerW = W - 1 + zPadWRight;
+				MYITE ctW = 0;
+
+				while((leftTopCornerW + FW - 1) <= extremeRightBottomCornerW)
+				{	
+
+					MYINT maxi = 0;
+					if ((((leftTopCornerH < 0) || (leftTopCornerH >= H)) || ((leftTopCornerW < 0) || (leftTopCornerW >= W)))){
+						maxi = 0;
+					}
+					else{
+						// maxi = inArr[n][leftTopCornerH][leftTopCornerW][c];
+						maxi =  A[n * H * W * C + leftTopCornerH * W * C + leftTopCornerW * C + c];
+					};
+
+					for (MYITE fh = 0; fh < FH; fh++)
 					{
-						for (MYITE ws = 0; ws < FW; ws++)
-						{
-							MYINT a = A[n * H * W * C + ((strideH * ho) + hs) * W * C + ((strideW * wo) + ws) * C + c];
-							if (a > max)
-								max = a;
+						for (MYITE fw = 0; fw < FW; fw++)
+						{	
+							MYITE curPosH = leftTopCornerH + fh;
+							MYITE curPosW = leftTopCornerW + fw;
+							MYINT temp = 0;
+
+							if ((((curPosH < 0) || (curPosH >= H)) || ((curPosW < 0) || (curPosW >= W)))){
+								temp = 0;
+							}
+							else{
+								// temp = inArr[n][curPosH][curPosW][c];
+								temp = A[n * H * W * C + curPosH * W * C + curPosW * C + c];
+							};
+							maxi = ((maxi < temp) ? temp : maxi);
+
 						}
 					}
 
-					B[n * HO * WO * C + ho * WO * C + wo * C + c] = max;
+					B[n * outH * outW * C + ctH * outW * C + ctW * C + c] = maxi;
+					// outArr[n][ctH][ctW][c] = maxi;
+					leftTopCornerW = leftTopCornerW + strideW;
+					ctW = ctW + 1;
 				}
+
+				leftTopCornerH = leftTopCornerH + strideH;
+				ctH = ctH + 1;
+			}
+		}
+	}
+
+	return;
+}
+
+// B = avgpool(A)
+// A[N][inH][inW][C], B[N][outH][outW][C]
+void Avgpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT outH, MYINT outW, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT zPadHLeft, MYINT zPadHRight, MYINT zPadWLeft, MYINT zPadWRight)
+{	
+	MYINT FSIZE = FH*FW;
+
+	for (MYITE n = 0; n < N; n++)
+	{	
+		for (MYITE c = 0; c < C; c++)
+		{	
+			MYITE leftTopCornerH = 0 - zPadHLeft;
+			MYITE extremeRightBottomCornerH = H - 1 + zPadHRight;
+			MYITE ctH = 0; 
+
+			while((leftTopCornerH + FH - 1) <= extremeRightBottomCornerH){
+				
+				MYITE leftTopCornerW = 0 - zPadWLeft;
+				MYITE extremeRightBottomCornerW = W - 1 + zPadWRight;
+				MYITE ctW = 0;
+
+				while((leftTopCornerW + FW - 1) <= extremeRightBottomCornerW)
+				{	
+
+					MYINT sum = 0;
+
+					for (MYITE fh = 0; fh < FH; fh++)
+					{
+						for (MYITE fw = 0; fw < FW; fw++)
+						{	
+							MYITE curPosH = leftTopCornerH + fh;
+							MYITE curPosW = leftTopCornerW + fw;
+							MYINT temp = 0;
+							
+							if ((((curPosH < 0) || (curPosH >= H)) || ((curPosW < 0) || (curPosW >= W)))){
+								temp = 0;
+							}
+							else{
+								// temp = inArr[n][curPosH][curPosW][c];
+								temp = A[n * H * W * C + curPosH * W * C + curPosW * C + c];
+							};
+							sum = sum + temp;
+
+						}
+					}
+
+					B[n * outH * outW * C + ctH * outW * C + ctW * C + c] = sum/FSIZE;
+					// outArr[n][ctH][ctW][c] = maxi;
+					leftTopCornerW = leftTopCornerW + strideW;
+					ctW = ctW + 1;
+				}
+
+				leftTopCornerH = leftTopCornerH + strideH;
+				ctH = ctH + 1;
 			}
 		}
 	}

@@ -10,7 +10,7 @@ from seedot.compiler.antlr.seedotParser import seedotParser as SeeDotParser
 import seedot.compiler.ast.ast as AST
 from seedot.compiler.ast.astVisitor import ASTVisitor
 
-indent = "  "
+indent = ""
 
 
 class PrintAST(ASTVisitor):
@@ -47,9 +47,9 @@ class PrintAST(ASTVisitor):
         self.visit(node.expr)
         print(indent * node.printLevel, node.shape, "order", node.order)
 
-    def visitMaxpool(self, node: AST.Maxpool):
+    def visitPool(self, node: AST.Pool):
         node.expr.printLevel = node.printLevel + 1
-        print(indent * node.printLevel, "maxpool")
+        print(indent * node.printLevel, node.poolType)
         self.visit(node.expr)
         print(indent * node.printLevel, node.kernelSize, node.stride, node.padding)
 

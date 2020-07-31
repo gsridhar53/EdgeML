@@ -30,14 +30,14 @@ import os, sys
 import onnx
 from onnx import helper
 
-file_path = '../../../model/lenet/cifar-multiclass/input.onnx'
+file_path = '../../../model/resnet-18/imagenet/input.onnx'
 model = onnx.load(file_path)
 sess = onnxruntime.InferenceSession(file_path) 
 
-dataset_path = '../../../datasets/lenet/cifar-multiclass/test_onnx.npy'
+dataset_path = '../../../datasets/resnet-18/imagenet/test.npy'
 test = np.load(dataset_path)
 
-run_all = True
+run_all = False
 intermediate = None
  
 correct = 0
@@ -49,7 +49,8 @@ for i in range(test.shape[0] if run_all else 1):
 	output = test[i,0]
 
 	# print(x.shape)
-	# print(output)
+	print(test[i].shape)
+	print(output)
 
 	input_name = model.graph.input[0].name
 	x = x.astype(np.float32)
@@ -72,12 +73,18 @@ for i in range(test.shape[0] if run_all else 1):
 
 	pred = sess.run(None, {input_name: x})
 
-	predicted_class = pred[0][0]+1
-	print(predicted_class)
-	print(int(output))
+	# print(pred[0][0])
 
-	correct += (predicted_class == int(output))
-	total += 1	
+	print(pred[0].reshape(-1,1))
+
+	# # print(pred)
+
+	# predicted_class = pred[0][0]+1
+	# # print(predicted_class)
+	# print(int(output))
+
+	# correct += (predicted_class == int(output))
+	# total += 1	
 
 	# np.save('debug/' + model_name + '/' + model_name + '_output', pred)
 	# with open('debug/onnx_output.txt', 'w') as f:
@@ -85,4 +92,4 @@ for i in range(test.shape[0] if run_all else 1):
 	# output_dims = common.proto_val_to_dimension_tuple(model.graph.output[0])
 	# print("Saving the onnx runtime output of dimension " + str(output_dims))
 
-print(str((float(correct)*100)/float(total)) + '% is the accuracy')
+# print(str((float(correct)*100)/float(total)) + '% is the accuracy')
